@@ -2,6 +2,7 @@ import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { buildSurface } from '../surfaces';
+import ParticleSystem from './ParticleSystem';
 
 export default function SurfaceMesh({
   surfaceId,
@@ -9,6 +10,12 @@ export default function SurfaceMesh({
   colorScheme,
   displayMode,
   animationSpeed,
+  params,
+  clipPlaneY,
+  colorMapAxis,
+  material = 'matte',
+  showContours = false,
+  showParticles = false,
 }) {
   const solidRef = useRef();
   const wireRef = useRef();
@@ -16,9 +23,14 @@ export default function SurfaceMesh({
   const morphProgress = useRef(1);
 
   const data = useMemo(
-    () => buildSurface(surfaceId, resolution, colorScheme),
-    [surfaceId, resolution, colorScheme]
+    () => buildSurface(surfaceId, resolution, colorScheme, params, colorMapAxis),
+    [surfaceId, resolution, colorScheme, params, colorMapAxis]
   );
+
+  const clipPlanes = useMemo(() => {
+    if (clipPlaneY >= 9.9) return [];
+    return [new THREE.Plane(new THREE.Vector3(0, -1, 0), clipPlaneY)];
+  }, [clipPlaneY]);
 
   // Store previous positions for morphing
   useEffect(() => {
@@ -104,42 +116,79 @@ export default function SurfaceMesh({
     return geo;
   }, [data]);
 
-  const wireGeometry = useMemo(() => {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(data.positions.slice(), 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(data.colors.slice(), 3));
-    geo.setIndex(new THREE.BufferAttribute(data.indices, 1));
-    geo.computeVertexNormals();
-    return geo;
-  }, [data]);
-
   const showSolid = displayMode === 'solid' || displayMode === 'both';
   const showWire = displayMode === 'wireframe' || displayMode === 'both';
+
+  // Material handling
+  const handleBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      `void main() {`,
+      `varying vec3 vLocalPos;\nvoid main() {`
+    ).replace(
+      `#include <begin_vertex>`,
+      `#include <begin_vertex>\nvLocalPos = position;`
+    );
+
+    shader.fragmentShader = shader.fragmentShader.replace(
+      `void main() {`,
+      `varying vec3 vLocalPos;\nvoid main() {`
+    ).replace(
+      `#include <color_fragment>`,
+      `#include <color_fragment>
+      float contour = fract(vLocalPos.y * 8.0);
+      float thickness = 0.05;
+      if (contour < thickness || contour > 1.0 - thickness) {
+        diffuseColor.rgb *= 0.15; // darken significantly to draw contour lines
+      }
+      `
+    );
+  };
+
+  const materialProps = {
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: displayMode === 'both' ? 0.35 : 0.85,
+    clippingPlanes: clipPlanes,
+    onBeforeCompile: showContours ? handleBeforeCompile : undefined,
+    key: `${material}-${showContours}-${displayMode}` // Force recompile on change
+  };
+
+  const renderSolidMaterial = () => {
+    switch (material) {
+      case 'glass':
+        return <meshPhysicalMaterial {...materialProps} transmission={1} thickness={0.5} roughness={0.15} ior={1.5} />;
+      case 'chrome':
+        return <meshStandardMaterial {...materialProps} metalness={1.0} roughness={0.1} />;
+      case 'hologram':
+        return <meshBasicMaterial {...materialProps} blending={THREE.AdditiveBlending} depthWrite={false} opacity={displayMode === 'both' ? 0.2 : 0.6} />;
+      case 'matte':
+      default:
+        return <meshStandardMaterial {...materialProps} roughness={0.5} metalness={0.1} />;
+    }
+  };
 
   return (
     <group>
       {showSolid && (
         <mesh ref={solidRef} geometry={geometry}>
-          <meshStandardMaterial
-            vertexColors
-            side={THREE.DoubleSide}
-            transparent
-            opacity={displayMode === 'both' ? 0.35 : 0.85}
-            roughness={0.5}
-            metalness={0.1}
-          />
+          {renderSolidMaterial()}
         </mesh>
       )}
       {showWire && (
-        <mesh ref={wireRef} geometry={wireGeometry}>
+        <mesh ref={wireRef} geometry={geometry}>
           <meshBasicMaterial
             vertexColors
             wireframe
             transparent
             opacity={0.9}
             side={THREE.DoubleSide}
+            clippingPlanes={clipPlanes}
           />
         </mesh>
+      )}
+      {showParticles && (
+        <ParticleSystem positions={data.positions} resolution={resolution} />
       )}
     </group>
   );

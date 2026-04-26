@@ -2,6 +2,7 @@
  * Mathematical surface generators — 24 surfaces across 4 categories.
  * Supports both heightfield (z=f(x,y)) and parametric ((u,v)→(x,y,z)) surfaces.
  */
+import * as math from 'mathjs';
 
 // ── Color ramps ──────────────────────────────────────────────────────────────
 
@@ -300,7 +301,7 @@ function torusKnotPoint(t, p, q, R) {
 
 // ── Geometry builder ────────────────────────────────────────────────────────
 
-export function buildSurface(surfaceId, resolution = 80, colorScheme = 'viridis') {
+export function buildSurface(surfaceId, resolution = 80, colorScheme = 'viridis', params = {}, colorMapAxis = 'y') {
   const def = SURFACE_DEFS.find((s) => s.id === surfaceId);
   if (!def) throw new Error(`Unknown surface: ${surfaceId}`);
 
@@ -313,15 +314,22 @@ export function buildSurface(surfaceId, resolution = 80, colorScheme = 'viridis'
   if (def.type === 'heightfield') {
     const [lo, hi] = def.range;
     const step = (hi - lo) / resolution;
+    const scope = { ...params, x: 0, y: 0 };
+    
     for (let i = 0; i <= resolution; i++) {
       for (let j = 0; j <= resolution; j++) {
         const x = lo + i * step;
         const y = lo + j * step;
-        const z = def.fn(x, y);
+        let z = 0;
+        
+        if (def.fn) {
+           z = def.fn(x, y);
+        }
+
         const idx = (i * (resolution + 1) + j) * 3;
         const scale = 7 / (hi - lo);
         positions[idx]     = (x - (lo + hi) / 2) * scale;
-        positions[idx + 1] = z;
+        positions[idx + 1] = isNaN(z) || !isFinite(z) ? 0 : z;
         positions[idx + 2] = (y - (lo + hi) / 2) * scale;
       }
     }
@@ -394,17 +402,25 @@ export function buildSurface(surfaceId, resolution = 80, colorScheme = 'viridis'
     positions[i+2] = (positions[i+2] - cz) * scale;
   }
 
-  // ── Color by height (Y in world) ──
-  let hMin = Infinity, hMax = -Infinity;
-  for (let v = 0; v < vertCount; v++) {
-    const h = positions[v*3+1];
-    if (h < hMin) hMin = h;
-    if (h > hMax) hMax = h;
-  }
-  const hRange = hMax - hMin || 1;
+  // ── Color based on selected axis ──
+  let valMin = Infinity, valMax = -Infinity;
+  const colorVals = new Float32Array(vertCount);
 
   for (let v = 0; v < vertCount; v++) {
-    const t = (positions[v*3+1] - hMin) / hRange;
+    const px = positions[v*3], py = positions[v*3+1], pz = positions[v*3+2];
+    let val = py; // default 'y' (height)
+    if (colorMapAxis === 'x') val = px;
+    else if (colorMapAxis === 'z') val = pz;
+    else if (colorMapAxis === 'radial') val = Math.sqrt(px*px + pz*pz);
+    
+    colorVals[v] = val;
+    if (val < valMin) valMin = val;
+    if (val > valMax) valMax = val;
+  }
+  const valRange = valMax - valMin || 1;
+
+  for (let v = 0; v < vertCount; v++) {
+    const t = (colorVals[v] - valMin) / valRange;
     const [r, g, b] = sampleColorRamp(ramp, t);
     colors[v*3]   = r;
     colors[v*3+1] = g;

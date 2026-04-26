@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { OrbitControls, Html, Line } from '@react-three/drei';
 import { EffectComposer, Bloom } from '@react-three/postprocessing';
@@ -191,12 +191,26 @@ function MatlabBox({ theme }) {
 function SceneContent({
   surfaceId, resolution, colorScheme, displayMode,
   autoRotate, animationSpeed, theme,
+  params, clipPlaneY, colorMapAxis,
+  setSurfaceId,
+  material, showContours, surfaceId2, colorScheme2, showParticles
 }) {
   const groupRef = useRef();
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
+    // Shift the rendering frustum to center the graph in the available view space
+    if (state.camera.setViewOffset) {
+      const isMobile = state.size.width <= 768;
+      // On desktop, the panel takes ~384px on the left, so we shift the graph RIGHT by 192px.
+      const shiftX = isMobile ? 0 : -192;
+      // On mobile, the panel is at the bottom, so we shift the graph UP by ~125px.
+      const shiftY = isMobile ? 125 : 0;
+      state.camera.setViewOffset(state.size.width, state.size.height, shiftX, shiftY, state.size.width, state.size.height);
+    }
+
     if (autoRotate && groupRef.current) {
-      groupRef.current.rotation.y += delta * animationSpeed * 0.3;
+      const speed = animationSpeed * 0.3;
+      groupRef.current.rotation.y += delta * speed;
     }
   });
 
@@ -214,7 +228,7 @@ function SceneContent({
         rotateSpeed={0.6}
         zoomSpeed={0.8}
         minDistance={6}
-        maxDistance={40}
+        maxDistance={200}
         maxPolarAngle={Math.PI * 0.85}
       />
 
@@ -226,7 +240,28 @@ function SceneContent({
           colorScheme={colorScheme}
           displayMode={displayMode}
           animationSpeed={animationSpeed}
+          params={params}
+          clipPlaneY={clipPlaneY}
+          colorMapAxis={colorMapAxis}
+          material={material}
+          showContours={showContours}
+          showParticles={showParticles}
         />
+        {surfaceId2 !== 'none' && (
+          <SurfaceMesh
+            surfaceId={surfaceId2}
+            resolution={resolution}
+            colorScheme={colorScheme2}
+            displayMode={displayMode}
+            animationSpeed={animationSpeed}
+            params={params}
+            clipPlaneY={clipPlaneY}
+            colorMapAxis={colorMapAxis}
+            material={material}
+            showContours={showContours}
+            showParticles={showParticles}
+          />
+        )}
         <MatlabBox theme={theme} />
       </group>
 
@@ -245,19 +280,24 @@ function SceneContent({
 export default function Scene({
   surfaceId, resolution, colorScheme, displayMode,
   autoRotate, animationSpeed, theme,
+  params, clipPlaneY, colorMapAxis,
+  setSurfaceId,
+  material, showContours, surfaceId2, colorScheme2, showParticles
 }) {
-  const bgColor = theme === 'dark' ? '#0c0c14' : '#f5f6fa';
+  const bgColor = theme === 'dark' ? '#0c0c14' : '#f0f1f5';
 
   return (
     <Canvas
       camera={{
-        position: [18, 11, 15],
+        position: [39.40, 22.56, 21.08],
         fov: 20,
         near: 0.1,
         far: 100,
       }}
       gl={{
         antialias: true,
+        preserveDrawingBuffer: true,
+        localClippingEnabled: true,
         toneMapping: THREE.ACESFilmicToneMapping,
         toneMappingExposure: theme === 'dark' ? 1.2 : 1.6,
       }}
@@ -274,6 +314,15 @@ export default function Scene({
         autoRotate={autoRotate}
         animationSpeed={animationSpeed}
         theme={theme}
+        params={params}
+        clipPlaneY={clipPlaneY}
+        colorMapAxis={colorMapAxis}
+        setSurfaceId={setSurfaceId}
+        material={material}
+        showContours={showContours}
+        surfaceId2={surfaceId2}
+        colorScheme2={colorScheme2}
+        showParticles={showParticles}
       />
     </Canvas>
   );
