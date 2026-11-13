@@ -151,20 +151,21 @@ export default function SurfaceMesh({
     opacity: displayMode === 'both' ? 0.35 : 0.85,
     clippingPlanes: clipPlanes,
     onBeforeCompile: showContours ? handleBeforeCompile : undefined,
-    key: `${material}-${showContours}-${displayMode}` // Force recompile on change
   };
+  // Changing the key forces the material to remount and recompile its shader
+  const materialKey = `${material}-${showContours}-${displayMode}`;
 
   const renderSolidMaterial = () => {
     switch (material) {
       case 'glass':
-        return <meshPhysicalMaterial {...materialProps} transmission={1} thickness={0.5} roughness={0.15} ior={1.5} />;
+        return <meshPhysicalMaterial key={materialKey} {...materialProps} transmission={1} thickness={0.5} roughness={0.15} ior={1.5} />;
       case 'chrome':
-        return <meshStandardMaterial {...materialProps} metalness={1.0} roughness={0.1} />;
+        return <meshStandardMaterial key={materialKey} {...materialProps} metalness={1.0} roughness={0.1} />;
       case 'hologram':
-        return <meshBasicMaterial {...materialProps} blending={THREE.AdditiveBlending} depthWrite={false} opacity={displayMode === 'both' ? 0.2 : 0.6} />;
+        return <meshBasicMaterial key={materialKey} {...materialProps} blending={THREE.AdditiveBlending} depthWrite={false} opacity={displayMode === 'both' ? 0.2 : 0.6} />;
       case 'matte':
       default:
-        return <meshStandardMaterial {...materialProps} roughness={0.5} metalness={0.1} />;
+        return <meshStandardMaterial key={materialKey} {...materialProps} roughness={0.5} metalness={0.1} />;
     }
   };
 
